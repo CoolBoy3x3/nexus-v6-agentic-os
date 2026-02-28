@@ -1,0 +1,10 @@
+{
+  "name": "@nexus/schemas",
+  "version": "0.1.0",
+  "description": "JSON schemas for Nexus V6 data structures",
+  "type": "module",
+  "exports": {
+    "./schemas/*": "./schemas/*"
+  },
+  "files": ["schemas"]
+}

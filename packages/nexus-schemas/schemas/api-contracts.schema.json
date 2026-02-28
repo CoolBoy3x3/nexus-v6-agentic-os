@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nexus-v6/schemas/api-contracts.json",
+  "title": "NexusApiContracts",
+  "description": "Registry of API contracts for all endpoints in the project",
+  "type": "object",
+  "required": ["contracts"],
+  "properties": {
+    "contracts": {
+      "type": "array",
+      "description": "All API contracts registered in the project",
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "method", "operationId", "requestSchema", "responseSchema", "version"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique contract identifier, used in task references and context packets"
+          },
+          "path": {
+            "type": "string",
+            "description": "URL path for this endpoint, e.g. /api/users/:id"
+          },
+          "method": {
+            "type": "string",
+            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+            "description": "HTTP method"
+          },
+          "operationId": {
+            "type": "string",
+            "description": "Unique operation name, matching the handler function or OpenAPI operationId"
+          },
+          "requestSchema": {
+            "type": "object",
+            "description": "JSON Schema for the request body, query params, and path params",
+            "properties": {
+              "body": { "type": "object", "description": "JSON Schema for the request body" },
+              "query": { "type": "object", "description": "JSON Schema for query string parameters" },
+              "params": { "type": "object", "description": "JSON Schema for path parameters" },
+              "headers": { "type": "object", "description": "JSON Schema for required headers" }
+            },
+            "additionalProperties": false
+          },
+          "responseSchema": {
+            "type": "object",
+            "description": "JSON Schema for possible response bodies keyed by HTTP status code",
+            "additionalProperties": {
+              "type": "object",
+              "description": "JSON Schema for the response body at this status code"
+            }
+          },
+          "version": {
+            "type": "string",
+            "description": "Contract version, e.g. v1, v2, or a semver string"
+          },
+          "deprecated": {
+            "type": "boolean",
+            "description": "Whether this contract is deprecated and should not be used in new code",
+            "default": false
+          },
+          "moduleId": {
+            "type": "string",
+            "description": "The module that owns this endpoint"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Optional categorization tags for grouping related contracts",
+            "items": { "type": "string" }
+          },
+          "authentication": {
+            "type": "string",
+            "enum": ["none", "bearer", "api-key", "session", "oauth2"],
+            "description": "Authentication scheme required for this endpoint"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "lastUpdated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the last contract registry update"
+    }
+  },
+  "additionalProperties": false
+}

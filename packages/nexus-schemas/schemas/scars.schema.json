@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nexus-v6/schemas/scars.json",
+  "title": "NexusScars",
+  "description": "Structured failure records with root cause analysis and prevention rules",
+  "type": "object",
+  "required": ["scars"],
+  "properties": {
+    "scars": {
+      "type": "array",
+      "description": "All failure records accumulated during project execution",
+      "items": {
+        "type": "object",
+        "required": ["id", "taskId", "timestamp", "category", "description", "rootCause", "resolution", "preventionRule", "filesAffected"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique scar identifier, e.g. scar-001 or a UUID"
+          },
+          "taskId": {
+            "type": "string",
+            "description": "The task ID that produced this scar"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the scar was recorded"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["logic", "integration", "performance", "security", "ux", "data", "test", "other"],
+            "description": "Failure category: logic (incorrect business logic or algorithm), integration (service or API integration failure), performance (throughput or latency issue), security (auth, injection, or exposure vulnerability), ux (user experience or visual regression), data (data loss, corruption, or schema issue), test (test suite failure or flakiness), other (does not fit the above categories)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what went wrong"
+          },
+          "rootCause": {
+            "type": "string",
+            "description": "Analysis of why this failure occurred at a technical level"
+          },
+          "resolution": {
+            "type": "string",
+            "description": "How the failure was resolved or worked around"
+          },
+          "preventionRule": {
+            "type": "string",
+            "description": "A specific, actionable rule that will prevent this class of failure in future tasks"
+          },
+          "filesAffected": {
+            "type": "array",
+            "description": "Files that were in a broken state during this failure",
+            "items": { "type": "string" }
+          },
+          "rollbackRef": {
+            "type": "string",
+            "description": "Git ref or checkpoint ID used to roll back from this failure, if a rollback was performed"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "preventionRules": {
+      "type": "array",
+      "description": "Deduplicated set of prevention rules extracted from all scars, used to prime agent context",
+      "items": {
+        "type": "object",
+        "required": ["rule", "sourceScarId", "addedAt"],
+        "properties": {
+          "rule": {
+            "type": "string",
+            "description": "The prevention rule text"
+          },
+          "sourceScarId": {
+            "type": "string",
+            "description": "The scar ID from which this rule was extracted"
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when this rule was added to the registry"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

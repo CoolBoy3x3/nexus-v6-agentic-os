@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nexus-v6/schemas/data-models.json",
+  "title": "NexusDataModels",
+  "description": "Data model registry with field definitions, relationships, and migration history",
+  "type": "object",
+  "required": ["models"],
+  "properties": {
+    "models": {
+      "type": "array",
+      "description": "All data models (ORM entities, database tables) in the project",
+      "items": {
+        "type": "object",
+        "required": ["name", "fields"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Model class name, e.g. User, Post, Order"
+          },
+          "tableName": {
+            "type": "string",
+            "description": "Database table name, if different from the pluralized model name"
+          },
+          "fields": {
+            "type": "array",
+            "description": "List of fields/columns in this model",
+            "items": {
+              "type": "object",
+              "required": ["name", "type"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Field name"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Data type, e.g. string, integer, boolean, datetime, uuid, jsonb, text"
+                },
+                "nullable": {
+                  "type": "boolean",
+                  "description": "Whether this field can be null",
+                  "default": false
+                },
+                "defaultValue": {
+                  "description": "Default value for this field. Can be any JSON-serializable value or a SQL expression string.",
+                  "oneOf": [
+                    { "type": "string" },
+                    { "type": "number" },
+                    { "type": "boolean" },
+                    { "type": "null" }
+                  ]
+                },
+                "unique": {
+                  "type": "boolean",
+                  "description": "Whether this field has a unique constraint",
+                  "default": false
+                },
+                "indexed": {
+                  "type": "boolean",
+                  "description": "Whether this field has a database index",
+                  "default": false
+                },
+                "primaryKey": {
+                  "type": "boolean",
+                  "description": "Whether this field is the primary key",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "relationships": {
+            "type": "array",
+            "description": "ORM-level relationships defined on this model",
+            "items": {
+              "type": "object",
+              "required": ["type", "model", "foreignKey"],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["hasOne", "hasMany", "belongsTo"],
+                  "description": "Relationship cardinality"
+                },
+                "model": {
+                  "type": "string",
+                  "description": "Target model name"
+                },
+                "foreignKey": {
+                  "type": "string",
+                  "description": "The foreign key field used in this relationship"
+                },
+                "through": {
+                  "type": "string",
+                  "description": "Join table name for many-to-many relationships defined as two hasMany edges"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "moduleId": {
+            "type": "string",
+            "description": "The module that owns this model"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "migrations": {
+      "type": "array",
+      "description": "Ordered list of database migrations with their application status",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Migration identifier, typically a timestamp prefix like 20240101_add_users"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable migration description"
+          },
+          "appliedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when this migration was applied. Absent if not yet applied."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "lastAnalyzed": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the last data model analysis run"
+    }
+  },
+  "additionalProperties": false
+}

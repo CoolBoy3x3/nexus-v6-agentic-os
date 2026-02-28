@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+
+# Runtime state (generated per-project, never commit)
+.nexus/
+
+# Worktrees
+.worktrees/
+worktrees/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Runtime JSONL audit logs (generated at runtime, not source files)
+mission-log.jsonl
+
+# Coverage
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/settings.json
+.vscode/.ropeproject
+.idea/
+*.swp
+*.swo
+
+# Test artifacts
+screenshots/
+traces/
+videos/
+
+# pnpm
+.pnpm-store/

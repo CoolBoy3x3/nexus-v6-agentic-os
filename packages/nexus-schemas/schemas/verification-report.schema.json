@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nexus-v6/schemas/verification-report.json",
+  "title": "NexusVerificationReport",
+  "description": "Six-dimensional verification ladder result for a completed task",
+  "type": "object",
+  "required": ["taskId", "timestamp", "status", "physicalityOk", "deterministicOk", "goalBackwardOk", "adversarialOk", "systemValidationOk", "playwrightOk", "gaps", "humanItems", "artifacts"],
+  "properties": {
+    "taskId": {
+      "type": "string",
+      "description": "The task ID this report corresponds to"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the verification run completed"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["passed", "gaps_found", "human_needed"],
+      "description": "Overall verification outcome: passed (all gates green), gaps_found (automated retry possible), human_needed (human inspection required)"
+    },
+    "physicalityOk": {
+      "type": "boolean",
+      "description": "Gate 1: All claimed output files exist on disk and are non-empty"
+    },
+    "deterministicOk": {
+      "type": "boolean",
+      "description": "Gate 2: All tests pass consistently across multiple runs with no flakiness"
+    },
+    "goalBackwardOk": {
+      "type": "boolean",
+      "description": "Gate 3: Implementation satisfies all acceptance criteria stated in the task description"
+    },
+    "adversarialOk": {
+      "type": "boolean",
+      "description": "Gate 4: Implementation handles edge cases, invalid input, and adversarial conditions correctly"
+    },
+    "systemValidationOk": {
+      "type": "boolean",
+      "description": "Gate 5: Integration tests and system health checks pass end-to-end"
+    },
+    "playwrightOk": {
+      "type": "boolean",
+      "description": "Gate 6: User-facing behavior verified in a real browser via Playwright specs"
+    },
+    "gaps": {
+      "type": "array",
+      "description": "List of verification gaps where a gate did not fully pass",
+      "items": {
+        "type": "object",
+        "required": ["truth", "status", "reason", "artifacts", "missing"],
+        "properties": {
+          "truth": {
+            "type": "string",
+            "description": "The acceptance criterion or invariant that was not satisfied"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["failed", "partial"],
+            "description": "Whether this gap represents a complete failure or a partial pass"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Explanation of why this gap exists"
+          },
+          "artifacts": {
+            "type": "array",
+            "description": "Files or outputs that were produced but are incorrect or incomplete",
+            "items": {
+              "type": "object",
+              "required": ["path", "issue"],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Relative path to the artifact"
+                },
+                "issue": {
+                  "type": "string",
+                  "description": "What is wrong with this artifact"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "missing": {
+            "type": "array",
+            "description": "Artifacts or behaviors that are completely absent",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "humanItems": {
+      "type": "array",
+      "description": "Items that require human inspection or sign-off before this task can be marked complete",
+      "items": {
+        "type": "object",
+        "required": ["description", "instructions", "acceptanceCriteria"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "What the human needs to verify"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Step-by-step instructions for the human reviewer"
+          },
+          "acceptanceCriteria": {
+            "type": "string",
+            "description": "What constitutes a passing result for this human verification item"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Paths to all artifacts produced during this verification run (screenshots, logs, test reports, etc.)",
+      "items": { "type": "string" }
+    },
+    "score": {
+      "type": "string",
+      "description": "Human-readable score summary, e.g. '5/6 gates passed'"
+    }
+  },
+  "additionalProperties": false
+}

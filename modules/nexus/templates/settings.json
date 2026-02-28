@@ -1,0 +1,42 @@
+{
+  "project": {
+    "name": "",
+    "version": "0.1.0"
+  },
+  "pipeline": {
+    "auto_advance": true,
+    "parallelization": true,
+    "maxParallelWorkers": 5
+  },
+  "autonomy": {
+    "default": "medium",
+    "overrides": {}
+  },
+  "tdd": {
+    "default": "standard",
+    "overrides": {}
+  },
+  "commands": {
+    "test": "npm test",
+    "lint": "npm run lint",
+    "typecheck": "npx tsc --noEmit",
+    "format_check": "npx prettier --check ."
+  },
+  "playwright": {
+    "enabled": false,
+    "mcpPath": ""
+  },
+  "dashboard": {
+    "port": 7890
+  },
+  "checkpoints": {
+    "beforeHighRisk": true,
+    "maxRetained": 10
+  },
+  "notifications": {
+    "onHighRisk": true,
+    "onCriticalRisk": true,
+    "onScar": true
+  },
+  "required_skills": {}
+}

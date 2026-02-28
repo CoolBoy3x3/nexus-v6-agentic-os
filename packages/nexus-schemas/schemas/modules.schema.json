@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nexus-v6/schemas/modules.json",
+  "title": "NexusModules",
+  "description": "Module architecture map with ownership boundaries for Nexus V6",
+  "type": "object",
+  "required": ["modules"],
+  "properties": {
+    "modules": {
+      "type": "array",
+      "description": "List of architectural modules in the project",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "path", "description", "type", "owns"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the module, used in boundary rules and task references"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable module name"
+          },
+          "path": {
+            "type": "string",
+            "description": "Root path of the module relative to the project root"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this module is responsible for"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["feature", "shared", "infra", "config", "test", "tool"],
+            "description": "Module classification: feature (domain feature), shared (cross-cutting), infra (infrastructure), config (configuration), test (test helpers), tool (build/dev tooling)"
+          },
+          "owns": {
+            "type": "array",
+            "description": "File glob patterns that this module owns",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "tags": {
+            "type": "array",
+            "description": "Optional labels for grouping or filtering modules",
+            "items": { "type": "string" }
+          },
+          "dependsOn": {
+            "type": "array",
+            "description": "Module IDs this module is allowed to import from",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "description": "Explicit boundary rules governing allowed cross-module imports",
+      "items": {
+        "type": "object",
+        "required": ["fromModule", "toModule", "allowed", "reason"],
+        "properties": {
+          "fromModule": {
+            "type": "string",
+            "description": "Source module ID"
+          },
+          "toModule": {
+            "type": "string",
+            "description": "Target module ID"
+          },
+          "allowed": {
+            "type": "boolean",
+            "description": "Whether this cross-module dependency is permitted"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Justification for this boundary rule"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "lastAnalyzed": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the last architecture analysis run"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nexus-v6/schemas/task-graph.json",
+  "title": "NexusTaskGraph",
+  "type": "object",
+  "required": ["version", "mission", "tasks"],
+  "properties": {
+    "version": { "type": "string" },
+    "mission": { "type": "string" },
+    "currentPhase": { "type": "string" },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "phase", "description", "status", "riskTier", "tddMode", "wave"],
+        "properties": {
+          "id": { "type": "string" },
+          "phase": { "type": "string" },
+          "plan": { "type": "string" },
+          "description": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "running", "completed", "failed", "blocked", "superseded", "deferred"] },
+          "riskTier": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+          "tddMode": { "type": "string", "enum": ["hard", "standard", "skip"] },
+          "reviewTier": { "type": "string", "enum": ["none", "self", "peer", "adversarial"] },
+          "autonomyLevel": { "type": "string", "enum": ["low", "medium", "high"] },
+          "dependsOn": { "type": "array", "items": { "type": "string" } },
+          "filesModified": { "type": "array", "items": { "type": "string" } },
+          "rollbackAnchor": { "type": "string" },
+          "startCommit": { "type": "string", "description": "git HEAD SHA at task start — used by physicality verifier" },
+          "wave": { "type": "integer", "minimum": 1 },
+          "worktreeRef": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "waves": {
+      "type": "object",
+      "additionalProperties": { "type": "array", "items": { "type": "string" } }
+    },
+    "lastUpdated": { "type": "string", "format": "date-time" }
+  }
+}

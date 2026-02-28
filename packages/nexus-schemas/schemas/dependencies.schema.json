@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nexus-v6/schemas/dependencies.json",
+  "title": "NexusDependencies",
+  "description": "Static dependency graph for the project, including cycle detection results",
+  "type": "object",
+  "required": ["edges"],
+  "properties": {
+    "edges": {
+      "type": "array",
+      "description": "All import/export edges discovered in the codebase",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "type"],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Source file path relative to project root"
+          },
+          "to": {
+            "type": "string",
+            "description": "Target file path relative to project root"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["import", "re-export", "dynamic"],
+            "description": "Edge classification: import (static import), re-export (export { x } from), dynamic (import())"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "cycles": {
+      "type": "array",
+      "description": "Detected circular dependency chains, each as an ordered list of file paths forming the cycle",
+      "items": {
+        "type": "array",
+        "description": "An ordered list of file paths that form a circular dependency",
+        "items": { "type": "string" },
+        "minItems": 2
+      }
+    },
+    "lastAnalyzed": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the last dependency analysis run"
+    }
+  },
+  "additionalProperties": false
+}

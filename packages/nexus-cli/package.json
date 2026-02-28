@@ -1,0 +1,33 @@
+{
+  "name": "@nexus/cli",
+  "version": "0.1.0",
+  "description": "Nexus V6 CLI — install, init, run, manage",
+  "type": "module",
+  "bin": {
+    "nexus": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --sourcemap",
+    "dev": "tsup src/index.ts --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "chalk": "^5.3.0",
+    "inquirer": "^10.2.0",
+    "ora": "^8.1.0",
+    "glob": "^11.0.0",
+    "fast-glob": "^3.3.0",
+    "@nexus/playwright": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

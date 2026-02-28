@@ -1,0 +1,19 @@
+{
+  "name": "@nexus/dashboard",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@nexus/core": "workspace:*",
+    "fastify": "^4.25.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}
