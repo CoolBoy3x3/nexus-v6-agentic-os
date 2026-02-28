@@ -43,7 +43,7 @@ Works with **Claude Code** today, Codex, Gemini, and OpenCode support built in.
 ### Step 1 — Clone the repo
 
 ```bash
-git clone https://github.com/your-org/nexus-v6.git
+git clone https://github.com/CoolBoy3x3/nexus-v6-agentic-os.git
 cd nexus-v6
 ```
 
@@ -269,6 +269,59 @@ Shows live task graph, agent status, scars, artifacts, and loop position.
 
 ## Key Concepts
 
+### The 4-Step Governance Loop
+
+```
+PLAN ──▶ EXECUTE ──▶ VERIFY ──▶ UNIFY ──▶ (repeat)
+```
+
+Every unit of work follows this loop. No phase can be skipped. The loop is tracked in `STATE.md` so any session can resume from exactly where it left off — even weeks later.
+
+- **PLAN** — Goal-backward decomposition into a wave-ordered task graph with explicit risk tiers, TDD modes, must-haves, and dependency edges.
+- **EXECUTE** — Wave-by-wave dispatch of parallel worker agents, each operating in an isolated git worktree with a narrow context packet.
+- **VERIFY** — 8-rung ladder that checks physical existence, correctness, coverage, goal alignment, adversarial edge cases, and (optionally) browser truth.
+- **UNIFY** — Architecture rebuild, scar consolidation, SUMMARY.md, HANDOFF.md for session continuity, auto-advance to next phase.
+
+### Wave-Based Parallel Workers
+
+Tasks are organized into **waves** — groups of independent tasks that can run simultaneously. Each wave must fully pass verification before the next wave starts.
+
+```
+Wave 1: [DB schema] [Auth types] [Config]        ← run in parallel
+Wave 2: [Auth service] [User model]              ← run in parallel (depend on Wave 1)
+Wave 3: [Login endpoint] [Register endpoint]     ← run in parallel (depend on Wave 2)
+```
+
+Each worker:
+- Gets its own git **worktree** (isolated branch, no file conflicts)
+- Receives only a **narrow context packet** (never the full codebase)
+- Emits structured `<<NEXUS_STATUS>>` / `<<NEXUS_COMPLETE>>` / `<<NEXUS_BLOCKED>>` tags
+- Has a **3-fix-attempt limit** — after 3 failures, it stops and escalates rather than spinning
+
+### Narrow Context Packets
+
+Workers never load the full codebase. Each packet contains only what the task actually needs:
+
+| Slot | Content | Size limit |
+|------|---------|-----------|
+| Files | Only files the task will modify | Exact paths |
+| Architecture slice | Module boundaries + dependencies for affected modules | Subset of modules.json |
+| Contracts slice | API contracts for endpoints the task touches | Subset of api_contracts.json |
+| Test slice | Test files mapped to the modified files | From test_map.json |
+| State digest | Current loop position + last decision | 150 lines of STATE.md |
+
+This keeps orchestrator context lean and prevents workers from developing false confidence from reading unrelated code.
+
+### Iron-Law TDD
+
+When `tdd: "hard"` is set (the default for high/critical risk tasks), the worker must follow strict red-green-refactor discipline:
+
+1. **Red** — Write a failing test that defines the contract. Commit. Verify it fails.
+2. **Green** — Write the minimum implementation to pass. Commit.
+3. **Refactor** — Clean up without breaking the test. Commit.
+
+The verification ladder's physicality rung checks that the test existed *before* the implementation commit. `tdd: "standard"` requires tests but not strict ordering. `tdd: "skip"` is only allowed for scaffolding, docs, and config.
+
 ### Risk Tiers
 
 | Tier | Examples | Behavior |
@@ -276,25 +329,31 @@ Shows live task graph, agent status, scars, artifacts, and loop position.
 | `low` | Docs, tests, non-critical UI | Execute freely |
 | `medium` | New features, refactors | Execute with awareness |
 | `high` | DB schema, auth, APIs | Auto-checkpoint + notification |
-| `critical` | Destructive migrations, security | Checkpoint + mandatory review |
+| `critical` | Destructive migrations, security | Checkpoint + mandatory human review |
 
 ### Scars
 
-Permanent failure records with prevention rules:
+Every failure creates a permanent **scar** — a record with a root cause and an extracted prevention rule:
 
 ```
-| SCAR-001 | 2026-02-28 | verify-failure | Login handler is a stub | No DB call | Check DB call wired before marking complete |
+| SCAR-001 | 2026-02-28 | logic | Login handler returned stub | No DB call wired | Always verify DB call exists before marking auth complete |
 ```
 
-Scars accumulate rules that the planner checks before any task touching the same area.
+The planner reads all scars relevant to a task's files before planning. Prevention rules become active constraints — the same mistake cannot happen twice.
 
 ### The 3-Consecutive-Failures Rule
 
-If a worker fails to fix a bug 3 times in a row, it emits `<<NEXUS_BLOCKED>>` and stops. The orchestrator escalates to the architect agent — this is an architecture problem, not a code problem.
+If a worker fails to fix the same issue 3 times in a row, it emits `<<NEXUS_BLOCKED>>` and stops entirely. The orchestrator escalates to the architect agent for a design review — persistent failures signal an architecture problem, not a code problem.
 
-### Context Packets
+### Session Continuity
 
-Workers never see the full codebase. Each worker receives only files their task touches, the architecture slice for their module, API contracts for affected endpoints, tests mapped to their files, and an 80-line STATE.md digest.
+Every `UNIFY` phase writes a `HANDOFF.md` capturing:
+- Exact loop position (which phase, which wave, which task)
+- What was just completed and what comes next
+- Active decisions and locked constraints
+- Any open deviations or deferred items
+
+Run `/nexus:progress` at the start of any new session — it reads HANDOFF.md + STATE.md and outputs **exactly ONE next action** to resume without re-reading the entire project.
 
 ---
 
