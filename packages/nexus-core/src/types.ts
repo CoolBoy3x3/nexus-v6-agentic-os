@@ -105,15 +105,51 @@ export interface Decision {
 
 // ─── Context Packet (narrow context for workers) ───────────────────────────
 
+/**
+ * Gold-standard narrow context packet passed to each worker agent.
+ * Workers receive ONLY what their task needs — never the full codebase.
+ * Each slot has a strict scope rule: only data relevant to filesModified.
+ */
 export interface ContextPacket {
+  // Identity
   taskId: string;
-  files: string[]; // only relevant files — NOT full repo
-  architectureSlice: Record<string, unknown>; // only relevant module entries
-  contractsSlice: Record<string, unknown>; // only contracts for affected APIs
-  testsSlice: string[]; // only test files for affected modules
-  stateDigest: string; // first 150 lines of STATE.md — not the full file
-  boundaries: string[]; // DO NOT TOUCH list
+  tddMode: TDDMode;         // hard | standard | skip — governs testing discipline
+  riskTier: RiskTier;       // gates checkpoint and review behavior
   generatedAt: string;
+
+  // Slot 1: File paths the worker is allowed to read and write
+  files: string[];           // == task.filesModified, never broader
+
+  // Slot 2: Current content of every file in `files`
+  // Empty string means "file does not exist yet — create it"
+  filesContent: Record<string, string>;
+
+  // Slot 3: Architecture — only module entries that own files in `files`
+  architectureSlice: Record<string, unknown>;
+
+  // Slot 4: API contracts — only contracts whose path overlaps with `files`
+  contractsSlice: Record<string, unknown>;
+
+  // Slot 5: Dependency symbols — exported symbols from files this task IMPORTS
+  // but does NOT own. Gives workers the interface without requiring a full file read.
+  dependencySymbols: Record<string, string[]>; // filePath → exported symbol names
+
+  // Slot 6: Test mappings — test files for the source files being modified
+  testsSlice: string[];
+
+  // Slot 7: Active prevention rules from SCARS.md (not the full stateDigest)
+  // These are NON-NEGOTIABLE constraints. Same mistake cannot happen twice.
+  scarsDigest: string;       // only "Active Prevention Rules" table rows, ≤30 lines
+
+  // Slot 8: Acceptance criteria rows from ACCEPTANCE_MASTER.md that this task satisfies
+  // Only the specific AC IDs listed in task.acceptanceCriteria
+  acceptanceCriteria: string; // formatted as Given/When/Then rows, ≤50 lines
+
+  // Slot 9: Loop/phase context — where we are, what was decided, what comes next
+  stateDigest: string;       // first 150 lines of STATE.md
+
+  // Slot 10: Hard boundary — files the worker must never touch
+  boundaries: string[];      // DO NOT TOUCH list verbatim from PLAN.md
 }
 
 // ─── Merge Decision ────────────────────────────────────────────────────────

@@ -29,113 +29,147 @@ Narrow context packets keep workers focused, honest, and fast.
 
 ---
 
-## Context Packet Structure
+## Gold-Standard Context Packet (10 Slots)
 
-A context packet is a structured object passed to a worker agent. It contains exactly these components:
+A context packet is a structured object passed to a worker agent. It contains exactly 10 slots — no more, no less. Every slot has a strict scope rule.
 
-### 1. `task`
+### Slot 1: `files`
 
-The full task definition from PLAN.md:
+The exact list of file paths the worker is allowed to read and write. Equals `task.filesModified`. Never broader.
 
 ```json
-{
-  "id": "T02",
-  "description": "Implement session middleware that validates JWT tokens from Authorization header. Export validateSession(req, res, next). Return 401 if missing or invalid. Attach decoded user to req.user.",
-  "wave": 1,
-  "depends_on": [],
-  "files_modified": [
-    "src/auth/middleware.ts",
-    "src/auth/middleware.test.ts"
-  ],
-  "risk_tier": "high",
-  "tdd_mode": "hard",
-  "acceptance_criteria": ["AC-3", "AC-4"]
+"files": ["src/auth/middleware.ts", "src/auth/middleware.test.ts"]
+```
+
+### Slot 2: `filesContent`
+
+The current content of every file in `files`. Empty string means the file does not exist yet — the worker creates it.
+
+```json
+"filesContent": {
+  "src/auth/middleware.ts": "(current file content or empty string if new)",
+  "src/auth/middleware.test.ts": ""
 }
 ```
 
-### 2. `filesContent`
+**Critical:** Workers receive paths AND content. They do not need to read files themselves for their own slots. This prevents workers from accidentally broadening their context by reading adjacent files.
 
-The current content of every file in `task.files_modified`:
+### Slot 3: `architectureSlice`
 
-```
-filesContent: {
-  "src/auth/middleware.ts": "(file content — may be empty if new file)",
-  "src/auth/middleware.test.ts": "(file content — may be empty if new file)"
+From `modules.json`, only the module entries that own files in `task.filesModified`. Not the full architecture.
+
+```json
+"architectureSlice": {
+  "modules": [{
+    "id": "auth",
+    "path": "src/auth/",
+    "responsibility": "Authentication and session management",
+    "publicApi": "src/auth/index.ts",
+    "exports": ["validateSession", "createSession", "destroySession"],
+    "dependsOn": [],
+    "usedBy": ["api"]
+  }]
 }
 ```
 
-Include files that don't exist yet (worker needs to know to create them, not that they're missing).
+### Slot 4: `contractsSlice`
 
-### 3. `architectureSlice`
+From `api_contracts.json`, only contracts whose file path overlaps with `task.filesModified`. Not all contracts.
 
-From ARCHITECTURE.md, extract ONLY the sections covering modules that own the files in `task.files_modified`.
-
-**Not the full ARCHITECTURE.md.** If the task modifies `src/auth/middleware.ts`, extract only the `auth` module section, not the entire module map.
-
-Example:
+```json
+"contractsSlice": {
+  "contracts": [{
+    "id": "auth-session",
+    "endpoint": "POST /api/auth/login",
+    "requestSchema": { "email": "string", "password": "string" },
+    "responseSchema": { "token": "string", "expiresAt": "string" }
+  }]
+}
 ```
-architectureSlice: "
-## Module: auth
-Path: src/auth/
-Responsibility: Authentication and session management
-Public API: src/auth/index.ts exports: validateSession, createSession, destroySession
-Depends on: none
-Used by: api (imports validateSession for route protection)
 
-API Boundaries touching this module:
-  POST /api/auth/login → src/auth/login.ts
-  POST /api/auth/logout → src/auth/logout.ts
-  All protected routes → src/auth/middleware.ts (validateSession)
+### Slot 5: `dependencySymbols`
+
+Exported symbol names from files this task **imports but does not own**. Gives workers the interface without loading full files. Built from `symbols.json` + `ownership.json`.
+
+```json
+"dependencySymbols": {
+  "src/shared/jwt.ts": ["signToken", "verifyToken", "JWTPayload"],
+  "src/db/users.ts": ["findUserById", "UserRecord"]
+}
+```
+
+**Why this matters:** Without this slot, workers either guess at interfaces (producing type errors) or request permission to read dependency files (slowing execution). This slot eliminates both failure modes.
+
+### Slot 6: `testsSlice`
+
+Test file paths mapped to the source files being modified. From `test_map.json`.
+
+```json
+"testsSlice": ["src/auth/middleware.test.ts", "src/auth/__integration__/middleware.int.test.ts"]
+```
+
+### Slot 7: `scarsDigest`
+
+**Only the Active Prevention Rules table from SCARS.md.** Maximum 30 lines. These are non-negotiable constraints — the same mistake cannot happen twice.
+
+```
+scarsDigest: "
+## Active Prevention Rules
+| Rule | Applies To | Constraint |
+|------|-----------|-----------|
+| SCAR-001 | src/auth/ | Always verify DB call wired before marking auth complete |
+| SCAR-003 | */middleware* | Never trust req.user without null check — JWT decode can return null |
 "
 ```
 
-### 4. `contractsSlice`
+Do NOT include full scar descriptions, timestamps, or root cause analysis — just the prevention rules table.
 
-From `api_contracts.json`, extract ONLY the contracts referenced by the files in `task.files_modified`.
+### Slot 8: `acceptanceCriteria`
 
-If the middleware validates JWTs: include the JWT contract definition. Do not include the entire contracts file.
-
-### 5. `testsSlice`
-
-From `test_map.json`, extract ONLY the test file entries for the source files being modified.
-
-This tells the worker what test patterns are already established for this module.
-
-### 6. `stateDigest`
-
-A condensed summary of STATE.md. **Maximum 80 lines.**
-
-Focus on:
-- Current phase goal (1-2 sentences)
-- Active prevention rules from SCARS.md (copy verbatim — these are constraints)
-- Any relevant prior decisions from DECISION_LOG.md (only those that affect this task)
-- Accumulated constraints noted in STATE.md
-
-Do NOT include:
-- Performance metrics
-- Full phase history
-- Roadmap details
-- Session timestamps
-
-### 7. `boundaries`
-
-The DO NOT CHANGE list from PLAN.md. This is critical — workers must not touch files outside their scope.
+The specific AC rows from `ACCEPTANCE_MASTER.md` that this task must satisfy. Maximum 50 lines. Only the IDs listed in `task.acceptanceCriteria`.
 
 ```
-boundaries: "
-DO NOT CHANGE:
-  - src/auth/login.ts (modified by T01)
-  - src/api/routes.ts (will be modified by T03)
-  - Any file not in task.files_modified
+acceptanceCriteria: "
+AC-3: Session Validation
+  Given: A request with a valid JWT in the Authorization header
+  When: validateSession middleware runs
+  Then: req.user is populated with decoded payload and next() is called
 
-DO NOT CHANGE any authentication logic that is currently working.
-DO NOT change the session token format — it is defined in api_contracts.json.
+AC-4: Invalid Token Rejection
+  Given: A request with an expired or malformed JWT
+  When: validateSession middleware runs
+  Then: 401 response returned, req.user is not set
 "
 ```
 
-### 8. `tddMode`
+### Slot 9: `stateDigest`
 
-From `task.tdd_mode`: `hard | standard | skip`. A simple string, not an object.
+First 150 lines of `STATE.md`. Covers: current loop position, phase goal, recent decisions, blockers. Not the full history.
+
+### Slot 10: `boundaries`
+
+The DO NOT CHANGE list verbatim from `PLAN.md`. Workers must never write to files outside `task.filesModified`.
+
+```
+boundaries: [
+  "src/auth/login.ts — modified by T01, do not touch",
+  "src/api/routes.ts — will be modified by T03, do not touch"
+]
+```
+
+---
+
+## Why All 10 Slots Are Necessary
+
+| Without this slot | Failure mode |
+|------------------|-------------|
+| No `filesContent` | Worker reads own files — may accidentally broaden context |
+| No `dependencySymbols` | Worker guesses interfaces → type errors, or requests permission reads → slow |
+| No `scarsDigest` | Worker repeats past failures — same bug introduced twice |
+| No `acceptanceCriteria` | Worker doesn't know what "done" means — implements wrong behavior |
+| No `tddMode` | Worker defaults to no tests or wrong TDD discipline for risk level |
+
+The 10-slot packet is a gold standard — every slot has a failure mode it prevents.
 
 ---
 
@@ -238,13 +272,17 @@ If a worker repeatedly needs files outside its context packet, this may indicate
 
 ## Success Criteria
 
-- [ ] Context packet built with exactly 8 components
-- [ ] filesContent contains ONLY files in task.files_modified
-- [ ] architectureSlice contains ONLY sections for modules owning modified files
-- [ ] contractsSlice contains ONLY contracts referenced by modified files
-- [ ] testsSlice contains test mappings for modified source files
-- [ ] stateDigest is <= 80 lines and includes active prevention rules
-- [ ] boundaries section from PLAN.md included verbatim
-- [ ] tddMode string passed correctly
-- [ ] No full repo context included
-- [ ] No files outside task.files_modified in any slice
+- [ ] Context packet built with exactly 10 slots
+- [ ] `files` == task.filesModified exactly, never broader
+- [ ] `filesContent` has an entry for every file in `files` (empty string for new files)
+- [ ] `architectureSlice` contains ONLY modules owning the modified files
+- [ ] `contractsSlice` contains ONLY contracts overlapping with modified files
+- [ ] `dependencySymbols` contains exported symbols from imported-but-not-owned files
+- [ ] `testsSlice` contains test file paths for modified source files
+- [ ] `scarsDigest` contains ONLY the Active Prevention Rules table, ≤30 lines
+- [ ] `acceptanceCriteria` contains ONLY the AC rows linked to this task, ≤50 lines
+- [ ] `stateDigest` is ≤150 lines of STATE.md
+- [ ] `boundaries` contains the DO NOT CHANGE list verbatim
+- [ ] `tddMode` and `riskTier` present at top level
+- [ ] No full repo context included anywhere
+- [ ] No files outside task.filesModified in any slot

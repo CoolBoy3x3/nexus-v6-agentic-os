@@ -185,6 +185,8 @@ export const NEXUS_FILES = {
   DATA_MODELS: '.nexus/02-architecture/data_models.json',
   DEPENDENCIES: '.nexus/02-architecture/dependencies.json',
   FILE_MAP: '.nexus/03-index/file_map.json',
+  SYMBOLS: '.nexus/03-index/symbols.json',
+  OWNERSHIP: '.nexus/03-index/ownership.json',
   TEST_MAP: '.nexus/03-index/test_map.json',
   STATE_JSON: '.nexus/05-runtime/state.json',
   TASK_GRAPH: '.nexus/05-runtime/TASK_GRAPH.json',
