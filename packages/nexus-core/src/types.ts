@@ -108,7 +108,13 @@ export interface Decision {
 /**
  * Gold-standard narrow context packet passed to each worker agent.
  * Workers receive ONLY what their task needs — never the full codebase.
- * Each slot has a strict scope rule: only data relevant to filesModified.
+ *
+ * The 13 slots answer every question a worker must answer before writing code:
+ *   WHY        — missionContext, phaseObjective
+ *   WHAT       — files, filesContent, acceptanceCriteria
+ *   HOW        — architectureSlice, contractsSlice, dependencySymbols, testsSlice, waveContext
+ *   CONSTRAINTS — scarsDigest, stateDigest, boundaries
+ *   DISCIPLINE — tddMode, riskTier (top-level)
  */
 export interface ContextPacket {
   // Identity
@@ -117,39 +123,71 @@ export interface ContextPacket {
   riskTier: RiskTier;       // gates checkpoint and review behavior
   generatedAt: string;
 
-  // Slot 1: File paths the worker is allowed to read and write
-  files: string[];           // == task.filesModified, never broader
+  // ── WHY ──────────────────────────────────────────────────────────────────
 
-  // Slot 2: Current content of every file in `files`
-  // Empty string means "file does not exist yet — create it"
+  // Slot 1: Mission context — what the project is, core value, tech stack
+  // Source: PRD.md executive summary + constraints, ≤20 lines
+  // Answers: "Why does this task exist at all?"
+  missionContext: string;
+
+  // Slot 2: Phase objective — what this phase is trying to achieve and why now
+  // Source: current PLAN.md Objective section (Goal + Context + Output), ≤15 lines
+  // Answers: "What is the phase trying to accomplish? How does my task serve that?"
+  phaseObjective: string;
+
+  // ── WHAT ─────────────────────────────────────────────────────────────────
+
+  // Slot 3: File paths the worker is allowed to read and write
+  // == task.filesModified exactly, never broader
+  files: string[];
+
+  // Slot 4: Current content of every file in `files`
+  // Empty string = file does not exist yet, worker must create it
   filesContent: Record<string, string>;
 
-  // Slot 3: Architecture — only module entries that own files in `files`
+  // Slot 5: Acceptance criteria for this task (Given/When/Then rows only)
+  // Source: ACCEPTANCE_MASTER.md rows for task.acceptanceCriteria IDs, ≤50 lines
+  // Answers: "What does 'done' actually mean for this specific task?"
+  acceptanceCriteria: string;
+
+  // ── HOW ──────────────────────────────────────────────────────────────────
+
+  // Slot 6: Architecture — only module entries that own files in `files`
+  // Source: modules.json filtered to relevant modules
   architectureSlice: Record<string, unknown>;
 
-  // Slot 4: API contracts — only contracts whose path overlaps with `files`
+  // Slot 7: API contracts — only contracts whose path overlaps with `files`
+  // Source: api_contracts.json filtered to relevant contracts
   contractsSlice: Record<string, unknown>;
 
-  // Slot 5: Dependency symbols — exported symbols from files this task IMPORTS
-  // but does NOT own. Gives workers the interface without requiring a full file read.
-  dependencySymbols: Record<string, string[]>; // filePath → exported symbol names
+  // Slot 8: Dependency symbols — exported symbol names from files this task
+  // imports but does NOT own. Interface without loading full files.
+  // Source: symbols.json + ownership.json — filePath → exported symbol names
+  // Answers: "What can I call from the files I depend on?"
+  dependencySymbols: Record<string, string[]>;
 
-  // Slot 6: Test mappings — test files for the source files being modified
+  // Slot 9: Test file paths for the source files being modified
+  // Source: test_map.json filtered to relevant source files
   testsSlice: string[];
 
-  // Slot 7: Active prevention rules from SCARS.md (not the full stateDigest)
-  // These are NON-NEGOTIABLE constraints. Same mistake cannot happen twice.
-  scarsDigest: string;       // only "Active Prevention Rules" table rows, ≤30 lines
+  // Slot 10: Wave context — compact summary of what prior waves built
+  // Source: completed tasks in waves < this task's wave, ≤30 lines
+  // Answers: "What was just built that I am building on top of?"
+  waveContext: string;
 
-  // Slot 8: Acceptance criteria rows from ACCEPTANCE_MASTER.md that this task satisfies
-  // Only the specific AC IDs listed in task.acceptanceCriteria
-  acceptanceCriteria: string; // formatted as Given/When/Then rows, ≤50 lines
+  // ── CONSTRAINTS ──────────────────────────────────────────────────────────
 
-  // Slot 9: Loop/phase context — where we are, what was decided, what comes next
-  stateDigest: string;       // first 150 lines of STATE.md
+  // Slot 11: Active prevention rules only from SCARS.md, ≤30 lines
+  // NON-NEGOTIABLE — the same mistake cannot happen twice
+  scarsDigest: string;
 
-  // Slot 10: Hard boundary — files the worker must never touch
-  boundaries: string[];      // DO NOT TOUCH list verbatim from PLAN.md
+  // Slot 12: Loop position, recent decisions, blockers
+  // Source: first 150 lines of STATE.md
+  stateDigest: string;
+
+  // Slot 13: Files the worker must never touch
+  // Source: Boundaries section from PLAN.md verbatim
+  boundaries: string[];
 }
 
 // ─── Merge Decision ────────────────────────────────────────────────────────

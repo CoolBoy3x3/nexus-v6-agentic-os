@@ -29,11 +29,55 @@ Narrow context packets keep workers focused, honest, and fast.
 
 ---
 
-## Gold-Standard Context Packet (10 Slots)
+## Gold-Standard Context Packet (13 Slots)
 
-A context packet is a structured object passed to a worker agent. It contains exactly 10 slots — no more, no less. Every slot has a strict scope rule.
+A context packet is a structured object passed to a worker agent. It contains exactly 13 slots organized into 4 categories. Every slot answers a specific question a worker must be able to answer before writing a single line of code.
 
-### Slot 1: `files`
+```
+WHY        → missionContext, phaseObjective
+WHAT       → files, filesContent, acceptanceCriteria
+HOW        → architectureSlice, contractsSlice, dependencySymbols, testsSlice, waveContext
+CONSTRAINTS → scarsDigest, stateDigest, boundaries
+```
+
+---
+
+### Slot 1: `missionContext` — WHY does this task exist?
+
+From `PRD.md`: executive summary + technical constraints. Maximum 20 lines.
+
+```
+missionContext: "
+## Executive Summary
+SQX Lite is a lightweight SQL query builder for Node.js. Core value: type-safe
+queries without an ORM. Tech stack: TypeScript, Node.js 20+, no runtime deps.
+
+## Constraints (Technical)
+- Runtime: Node.js 20+
+- No external dependencies in production build
+- Must compile to CJS and ESM
+"
+```
+
+Without this: workers implement features that conflict with project constraints (e.g., adds a dependency to a zero-dep library).
+
+### Slot 2: `phaseObjective` — What is this phase trying to accomplish?
+
+From the current `PLAN.md` Objective section. Maximum 15 lines.
+
+```
+phaseObjective: "
+## Objective
+Goal: Implement the core query builder — SELECT, WHERE, ORDER BY, LIMIT/OFFSET.
+Context: This is Phase 1. Nothing exists yet. The output of this phase is the
+         foundation every other phase builds on.
+Output: SUMMARY.md at .nexus/04-plans/01-core-builder/SUMMARY.md
+"
+```
+
+Without this: workers don't know if they're building a foundation or an extension — they make different scope decisions depending on the answer.
+
+### Slot 3: `files`
 
 The exact list of file paths the worker is allowed to read and write. Equals `task.filesModified`. Never broader.
 
@@ -41,7 +85,7 @@ The exact list of file paths the worker is allowed to read and write. Equals `ta
 "files": ["src/auth/middleware.ts", "src/auth/middleware.test.ts"]
 ```
 
-### Slot 2: `filesContent`
+### Slot 4: `filesContent`
 
 The current content of every file in `files`. Empty string means the file does not exist yet — the worker creates it.
 
@@ -54,7 +98,27 @@ The current content of every file in `files`. Empty string means the file does n
 
 **Critical:** Workers receive paths AND content. They do not need to read files themselves for their own slots. This prevents workers from accidentally broadening their context by reading adjacent files.
 
-### Slot 3: `architectureSlice`
+### Slot 5: `acceptanceCriteria` — What does "done" mean?
+
+The specific AC rows from `ACCEPTANCE_MASTER.md` for this task's AC IDs. Maximum 50 lines.
+
+```
+acceptanceCriteria: "
+AC-3: Session Validation
+  Given: A request with a valid JWT in the Authorization header
+  When: validateSession middleware runs
+  Then: req.user is populated with decoded payload and next() is called
+
+AC-4: Invalid Token Rejection
+  Given: A request with an expired or malformed JWT
+  When: validateSession middleware runs
+  Then: 401 response returned, req.user is not set
+"
+```
+
+Without this: workers implement what they *think* the task means. With it: workers implement exactly what was decided.
+
+### Slot 6: `architectureSlice`
 
 From `modules.json`, only the module entries that own files in `task.filesModified`. Not the full architecture.
 
@@ -72,7 +136,7 @@ From `modules.json`, only the module entries that own files in `task.filesModifi
 }
 ```
 
-### Slot 4: `contractsSlice`
+### Slot 7: `contractsSlice`
 
 From `api_contracts.json`, only contracts whose file path overlaps with `task.filesModified`. Not all contracts.
 
@@ -87,9 +151,9 @@ From `api_contracts.json`, only contracts whose file path overlaps with `task.fi
 }
 ```
 
-### Slot 5: `dependencySymbols`
+### Slot 8: `dependencySymbols`
 
-Exported symbol names from files this task **imports but does not own**. Gives workers the interface without loading full files. Built from `symbols.json` + `ownership.json`.
+Exported symbol names from files this task **imports but does not own**. Gives workers the interface without loading full files.
 
 ```json
 "dependencySymbols": {
@@ -98,9 +162,9 @@ Exported symbol names from files this task **imports but does not own**. Gives w
 }
 ```
 
-**Why this matters:** Without this slot, workers either guess at interfaces (producing type errors) or request permission to read dependency files (slowing execution). This slot eliminates both failure modes.
+Without this: workers either guess at interfaces (type errors) or request permission reads (slows execution).
 
-### Slot 6: `testsSlice`
+### Slot 9: `testsSlice`
 
 Test file paths mapped to the source files being modified. From `test_map.json`.
 
@@ -108,9 +172,25 @@ Test file paths mapped to the source files being modified. From `test_map.json`.
 "testsSlice": ["src/auth/middleware.test.ts", "src/auth/__integration__/middleware.int.test.ts"]
 ```
 
-### Slot 7: `scarsDigest`
+### Slot 10: `waveContext` — What was just built that I'm building on top of?
 
-**Only the Active Prevention Rules table from SCARS.md.** Maximum 30 lines. These are non-negotiable constraints — the same mistake cannot happen twice.
+Compact summary of completed tasks in waves prior to this task's wave. Maximum 30 lines.
+
+```
+waveContext: "
+Prior wave completions (available to build on):
+  Wave 1 | T01: Implemented JWT signing/verification utilities
+    Files: src/shared/jwt.ts, src/shared/jwt.test.ts
+  Wave 1 | T02: Implemented User model with findById/findByEmail
+    Files: src/db/users.ts, src/db/users.test.ts
+"
+```
+
+Without this: Wave 2+ workers don't know what exists yet. They either re-implement Wave 1 work or assume things that aren't built yet. This slot gives them the exact foundation they're building on.
+
+### Slot 11: `scarsDigest`
+
+**Only the Active Prevention Rules table from SCARS.md.** Maximum 30 lines.
 
 ```
 scarsDigest: "
@@ -122,33 +202,13 @@ scarsDigest: "
 "
 ```
 
-Do NOT include full scar descriptions, timestamps, or root cause analysis — just the prevention rules table.
+### Slot 12: `stateDigest`
 
-### Slot 8: `acceptanceCriteria`
+First 150 lines of `STATE.md`. Loop position, recent decisions, blockers. Not full history.
 
-The specific AC rows from `ACCEPTANCE_MASTER.md` that this task must satisfy. Maximum 50 lines. Only the IDs listed in `task.acceptanceCriteria`.
+### Slot 13: `boundaries`
 
-```
-acceptanceCriteria: "
-AC-3: Session Validation
-  Given: A request with a valid JWT in the Authorization header
-  When: validateSession middleware runs
-  Then: req.user is populated with decoded payload and next() is called
-
-AC-4: Invalid Token Rejection
-  Given: A request with an expired or malformed JWT
-  When: validateSession middleware runs
-  Then: 401 response returned, req.user is not set
-"
-```
-
-### Slot 9: `stateDigest`
-
-First 150 lines of `STATE.md`. Covers: current loop position, phase goal, recent decisions, blockers. Not the full history.
-
-### Slot 10: `boundaries`
-
-The DO NOT CHANGE list verbatim from `PLAN.md`. Workers must never write to files outside `task.filesModified`.
+The DO NOT CHANGE list from `PLAN.md` verbatim.
 
 ```
 boundaries: [
@@ -159,17 +219,20 @@ boundaries: [
 
 ---
 
-## Why All 10 Slots Are Necessary
+## Why All 13 Slots Are Necessary
 
-| Without this slot | Failure mode |
-|------------------|-------------|
-| No `filesContent` | Worker reads own files — may accidentally broaden context |
-| No `dependencySymbols` | Worker guesses interfaces → type errors, or requests permission reads → slow |
-| No `scarsDigest` | Worker repeats past failures — same bug introduced twice |
-| No `acceptanceCriteria` | Worker doesn't know what "done" means — implements wrong behavior |
-| No `tddMode` | Worker defaults to no tests or wrong TDD discipline for risk level |
+| Slot | Without it | Failure mode |
+|------|-----------|-------------|
+| `missionContext` | Worker doesn't know project constraints | Adds a dependency to a zero-dep library; uses wrong runtime |
+| `phaseObjective` | Worker doesn't know if building foundation or extension | Over-engineers Wave 1; under-engineers final phase |
+| `filesContent` | Worker reads own files unsupervised | May accidentally load adjacent files, broadening context |
+| `acceptanceCriteria` | Worker interprets task description their own way | Implements wrong behavior, passes self-review, fails verifier |
+| `dependencySymbols` | Worker guesses interfaces | Type errors on every import, or permission-reads slow execution |
+| `waveContext` | Wave 2+ workers don't know what exists | Re-implements completed work or assumes things not yet built |
+| `scarsDigest` | Worker unaware of past failures | Same bug introduced twice |
+| `tddMode` | Worker uses wrong testing discipline | Hard-risk task without iron-law TDD; low-risk task over-tested |
 
-The 10-slot packet is a gold standard — every slot has a failure mode it prevents.
+The 13-slot packet is the gold standard — every slot has a specific failure mode it prevents.
 
 ---
 
@@ -272,17 +335,20 @@ If a worker repeatedly needs files outside its context packet, this may indicate
 
 ## Success Criteria
 
-- [ ] Context packet built with exactly 10 slots
-- [ ] `files` == task.filesModified exactly, never broader
-- [ ] `filesContent` has an entry for every file in `files` (empty string for new files)
-- [ ] `architectureSlice` contains ONLY modules owning the modified files
-- [ ] `contractsSlice` contains ONLY contracts overlapping with modified files
-- [ ] `dependencySymbols` contains exported symbols from imported-but-not-owned files
-- [ ] `testsSlice` contains test file paths for modified source files
-- [ ] `scarsDigest` contains ONLY the Active Prevention Rules table, ≤30 lines
-- [ ] `acceptanceCriteria` contains ONLY the AC rows linked to this task, ≤50 lines
-- [ ] `stateDigest` is ≤150 lines of STATE.md
-- [ ] `boundaries` contains the DO NOT CHANGE list verbatim
-- [ ] `tddMode` and `riskTier` present at top level
-- [ ] No full repo context included anywhere
+- [ ] Context packet built with exactly 13 slots
+- [ ] `missionContext` — PRD executive summary + tech constraints, ≤20 lines
+- [ ] `phaseObjective` — PLAN.md Objective section, ≤15 lines
+- [ ] `files` — equals task.filesModified exactly, never broader
+- [ ] `filesContent` — entry for every file in `files` (empty string for new files)
+- [ ] `acceptanceCriteria` — only AC rows linked to this task, ≤50 lines
+- [ ] `architectureSlice` — only modules owning the modified files
+- [ ] `contractsSlice` — only contracts overlapping with modified files
+- [ ] `dependencySymbols` — exported symbols from imported-but-not-owned files
+- [ ] `testsSlice` — test file paths for modified source files
+- [ ] `waveContext` — completed prior-wave tasks with file lists, ≤30 lines
+- [ ] `scarsDigest` — only Active Prevention Rules table, ≤30 lines
+- [ ] `stateDigest` — ≤150 lines of STATE.md
+- [ ] `boundaries` — DO NOT CHANGE list verbatim from PLAN.md
+- [ ] `tddMode` and `riskTier` at top level
+- [ ] No full repo context anywhere
 - [ ] No files outside task.filesModified in any slot

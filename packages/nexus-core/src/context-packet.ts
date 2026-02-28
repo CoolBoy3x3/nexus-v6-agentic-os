@@ -7,26 +7,32 @@ import { NEXUS_FILES } from './constants.js';
 export class ContextPacketBuilder {
   constructor(private readonly cwd: string = process.cwd()) {}
 
-  async buildForTask(task: TaskNode): Promise<ContextPacket> {
+  async buildForTask(task: TaskNode, allTasks?: TaskNode[]): Promise<ContextPacket> {
     // All slots built in parallel — no slot depends on another
     const [
+      missionContext,
+      phaseObjective,
       filesContent,
+      acceptanceCriteria,
       architectureSlice,
       contractsSlice,
       dependencySymbols,
       testsSlice,
+      waveContext,
       scarsDigest,
-      acceptanceCriteria,
       stateDigest,
       boundaries,
     ] = await Promise.all([
+      this.getMissionContext(),
+      this.getPhaseObjective(task),
       this.getFilesContent(task.filesModified),
+      this.getAcceptanceCriteria(task),
       this.getArchitectureSlice(task.filesModified),
       this.getContractsSlice(task.filesModified),
       this.getDependencySymbols(task.filesModified),
       this.getTestsSlice(task.filesModified),
+      this.getWaveContext(task, allTasks ?? []),
       this.getScarsDigest(),
-      this.getAcceptanceCriteria(task),
       this.getStateDigest(),
       this.getBoundaries(),
     ]);
@@ -36,20 +42,115 @@ export class ContextPacketBuilder {
       tddMode: task.tddMode,
       riskTier: task.riskTier,
       generatedAt: new Date().toISOString(),
+      missionContext,
+      phaseObjective,
       files: task.filesModified,
       filesContent,
+      acceptanceCriteria,
       architectureSlice,
       contractsSlice,
       dependencySymbols,
       testsSlice,
+      waveContext,
       scarsDigest,
-      acceptanceCriteria,
       stateDigest,
       boundaries,
     };
   }
 
-  // ── Slot 2: File contents ────────────────────────────────────────────────
+  // ── Slot 1: Mission context (WHY does this task exist) ──────────────────
+
+  private async getMissionContext(): Promise<string> {
+    const prdPath = path.join(this.cwd, '.nexus', '00-mission', 'PRD.md');
+    if (!existsSync(prdPath)) return '(no PRD.md found — mission context unavailable)';
+
+    try {
+      const raw = await readFile(prdPath, 'utf-8');
+      const lines = raw.split('\n');
+
+      // Extract Executive Summary + Constraints (tech stack) — cap at 20 lines
+      const summaryStart = lines.findIndex((l) => l.includes('Executive Summary'));
+      const constraintsStart = lines.findIndex((l) => l.includes('## Constraints'));
+
+      const parts: string[] = [];
+      if (summaryStart !== -1) {
+        // Take up to 8 lines from executive summary
+        parts.push(...lines.slice(summaryStart, summaryStart + 8));
+      }
+      if (constraintsStart !== -1) {
+        // Take technical constraints section, up to 8 lines
+        parts.push('', ...lines.slice(constraintsStart, constraintsStart + 8));
+      }
+
+      return parts.slice(0, 20).join('\n').trim() || '(PRD.md has no Executive Summary or Constraints section)';
+    } catch {
+      return '(could not read PRD.md)';
+    }
+  }
+
+  // ── Slot 2: Phase objective (WHY this phase, HOW task serves it) ─────────
+
+  private async getPhaseObjective(task: TaskNode): Promise<string> {
+    // Find the current phase PLAN.md
+    const planDir = path.join(this.cwd, '.nexus', '04-plans');
+    if (!existsSync(planDir)) return '(no plans directory found)';
+
+    try {
+      const { readdirSync } = await import('fs');
+      const phases = readdirSync(planDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && e.name.startsWith(task.phase))
+        .map((e) => e.name);
+
+      const phaseDir = phases[0] ? path.join(planDir, phases[0]) : path.join(planDir, task.phase);
+      const planPath = path.join(phaseDir, 'PLAN.md');
+      if (!existsSync(planPath)) return '(no PLAN.md found for this phase)';
+
+      const raw = await readFile(planPath, 'utf-8');
+      const lines = raw.split('\n');
+
+      // Extract the Objective section
+      const objStart = lines.findIndex((l) => l.match(/^## Objective/));
+      if (objStart === -1) return '(no Objective section in PLAN.md)';
+
+      // Take up to next ## section or 15 lines
+      const objEnd = lines.findIndex((l, i) => i > objStart && l.startsWith('## '));
+      const end = objEnd === -1 ? objStart + 15 : Math.min(objEnd, objStart + 15);
+
+      return lines.slice(objStart, end).join('\n').trim();
+    } catch {
+      return '(could not read phase PLAN.md)';
+    }
+  }
+
+  // ── Slot 10: Wave context (what prior waves built) ───────────────────────
+
+  private async getWaveContext(task: TaskNode, allTasks: TaskNode[]): Promise<string> {
+    if (task.wave <= 1 || allTasks.length === 0) {
+      return '(Wave 1 — no prior wave output to build on)';
+    }
+
+    // Completed tasks from prior waves only
+    const priorWaveTasks = allTasks.filter(
+      (t) => t.wave < task.wave && t.status === 'completed',
+    );
+
+    if (priorWaveTasks.length === 0) {
+      return `(Wave ${task.wave} — prior waves have no completed tasks yet)`;
+    }
+
+    const lines: string[] = [`Prior wave completions (available to build on):`];
+    for (const t of priorWaveTasks) {
+      lines.push(`  Wave ${t.wave} | ${t.id}: ${t.description}`);
+      if (t.filesModified.length > 0) {
+        lines.push(`    Files: ${t.filesModified.join(', ')}`);
+      }
+    }
+
+    // Cap at 30 lines
+    return lines.slice(0, 30).join('\n');
+  }
+
+  // ── Slot 4: File contents ────────────────────────────────────────────────
 
   private async getFilesContent(files: string[]): Promise<Record<string, string>> {
     const result: Record<string, string> = {};
