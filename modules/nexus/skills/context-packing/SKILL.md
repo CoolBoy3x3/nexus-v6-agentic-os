@@ -29,15 +29,16 @@ Narrow context packets keep workers focused, honest, and fast.
 
 ---
 
-## Gold-Standard Context Packet (13 Slots)
+## Gold-Standard Context Packet (14 Slots)
 
-A context packet is a structured object passed to a worker agent. It contains exactly 13 slots organized into 4 categories. Every slot answers a specific question a worker must be able to answer before writing a single line of code.
+A context packet is a structured object passed to a worker agent. It contains exactly 14 slots organized into 5 categories. Every slot answers a specific question a worker must be able to answer before writing a single line of code.
 
 ```
 WHY        → missionContext, phaseObjective
 WHAT       → files, filesContent, acceptanceCriteria
 HOW        → architectureSlice, contractsSlice, dependencySymbols, testsSlice, waveContext
 CONSTRAINTS → scarsDigest, stateDigest, boundaries
+TOOLING    → settings
 ```
 
 ---
@@ -217,9 +218,28 @@ boundaries: [
 ]
 ```
 
+### Slot 14: `settings` — TOOLING (exact commands)
+
+From `settings.json`. Tells workers exactly which commands to run. No guessing at tool names.
+
+```json
+"settings": {
+  "commands": {
+    "test": "pnpm vitest run",
+    "lint": "pnpm eslint src",
+    "typecheck": "pnpm tsc --noEmit",
+    "build": "pnpm build"
+  },
+  "auto_advance": true,
+  "parallelization": true
+}
+```
+
+Without this: workers fall back to `npm test` / `npm run lint` which may not exist in the project, causing false failures on every validation run. Workers also cannot determine auto-mode without reading settings.json from disk (which breaks the pre-built packet model).
+
 ---
 
-## Why All 13 Slots Are Necessary
+## Why All 14 Slots Are Necessary
 
 | Slot | Without it | Failure mode |
 |------|-----------|-------------|
@@ -230,58 +250,38 @@ boundaries: [
 | `dependencySymbols` | Worker guesses interfaces | Type errors on every import, or permission-reads slow execution |
 | `waveContext` | Wave 2+ workers don't know what exists | Re-implements completed work or assumes things not yet built |
 | `scarsDigest` | Worker unaware of past failures | Same bug introduced twice |
+| `settings` | Worker falls back to generic npm commands | Wrong test runner, false lint failures, wrong build command |
 | `tddMode` | Worker uses wrong testing discipline | Hard-risk task without iron-law TDD; low-risk task over-tested |
 
-The 13-slot packet is the gold standard — every slot has a specific failure mode it prevents.
+The 14-slot packet is the gold standard — every slot has a specific failure mode it prevents.
 
 ---
 
 ## How to Build a Context Packet
 
-The mission-controller builds context packets before dispatching each worker.
-
-### Building `filesContent`
+The mission-controller **never builds packets manually**. It calls `ContextPacketBuilder.buildForTask()` from `@nexus/core`. All 14 slots are assembled in parallel.
 
 ```typescript
-const filesContent = {};
-for (const filePath of task.files_modified) {
-  try {
-    filesContent[filePath] = readFile(filePath);
-  } catch {
-    filesContent[filePath] = ''; // File doesn't exist yet — worker creates it
-  }
-}
+import { ContextPacketBuilder } from '@nexus/core';
+
+const builder = new ContextPacketBuilder(projectCwd);
+const packet = await builder.buildForTask(task, allTasks);
+// packet has all 14 slots, ready to inline into worker prompt
 ```
 
-### Building `architectureSlice`
-
-1. Read ARCHITECTURE.md
-2. Identify which modules own the files in `task.files_modified`
-   - Check the module map: which module's path contains the file?
-3. Extract only those module sections
-4. Include only the API boundaries that involve those modules
-
-### Building `contractsSlice`
-
-1. Read `api_contracts.json`
-2. For each file in `task.files_modified`, check if it appears in any contract's `path` or related files
-3. Extract only the relevant contracts
-
-### Building `testsSlice`
-
-1. Read `test_map.json`
-2. Find entries where `sourceFile` matches a file in `task.files_modified`
-3. Return those entries
-
-### Building `stateDigest`
-
-1. Read STATE.md in full
-2. Extract:
-   - "Current Phase Goal:" section (if present)
-   - All rows from SCARS.md "Active Prevention Rules" table
-   - Any DECISION_LOG.md entries that are relevant to this task's files
-3. Limit to 80 lines
-4. Include the hard limit note: "Do not ask for more context — request with NEXUS_PERMISSION_REQUEST if truly needed"
+The builder handles all filtering, reading, and fallbacks internally:
+- `filesContent`: reads each file, returns empty string for new files
+- `architectureSlice`: reads modules.json, filters to relevant modules only
+- `contractsSlice`: reads api_contracts.json, filters to overlapping contracts
+- `dependencySymbols`: reads symbols.json + ownership.json, returns imports-not-owned
+- `testsSlice`: reads test_map.json, returns test files for modified sources
+- `stateDigest`: first 150 lines of STATE.md
+- `scarsDigest`: only the Active Prevention Rules section, ≤30 lines
+- `missionContext`: PRD.md executive summary + constraints, ≤20 lines
+- `phaseObjective`: PLAN.md Objective section, ≤15 lines
+- `waveContext`: completed prior-wave tasks, ≤30 lines
+- `boundaries`: settings.json boundaries array
+- `settings`: settings.json commands + flags with safe defaults
 
 ---
 
@@ -327,7 +327,7 @@ If a worker repeatedly needs files outside its context packet, this may indicate
 
 **Omitting prevention rules from stateDigest:** These are the most important constraints a worker can receive. Always include active prevention rules.
 
-**Making the stateDigest too long:** 80 lines is the maximum. Beyond that, the worker's attention is diluted. Be ruthless about what's included.
+**Making the stateDigest too long:** 150 lines is the maximum. Beyond that, the worker's attention is diluted. `ContextPacketBuilder` enforces this automatically.
 
 **Forgetting to include the test file in filesContent:** If `task.files_modified` includes a test file, include its current content (or empty string if new) in `filesContent`.
 
@@ -335,7 +335,7 @@ If a worker repeatedly needs files outside its context packet, this may indicate
 
 ## Success Criteria
 
-- [ ] Context packet built with exactly 13 slots
+- [ ] Context packet built with exactly 14 slots via `ContextPacketBuilder.buildForTask()`
 - [ ] `missionContext` — PRD executive summary + tech constraints, ≤20 lines
 - [ ] `phaseObjective` — PLAN.md Objective section, ≤15 lines
 - [ ] `files` — equals task.filesModified exactly, never broader
@@ -349,6 +349,7 @@ If a worker repeatedly needs files outside its context packet, this may indicate
 - [ ] `scarsDigest` — only Active Prevention Rules table, ≤30 lines
 - [ ] `stateDigest` — ≤150 lines of STATE.md
 - [ ] `boundaries` — DO NOT CHANGE list verbatim from PLAN.md
+- [ ] `settings` — commands.test, commands.lint, commands.typecheck, auto_advance, parallelization
 - [ ] `tddMode` and `riskTier` at top level
 - [ ] No full repo context anywhere
 - [ ] No files outside task.filesModified in any slot

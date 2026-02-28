@@ -22,6 +22,7 @@ export class ContextPacketBuilder {
       scarsDigest,
       stateDigest,
       boundaries,
+      settings,
     ] = await Promise.all([
       this.getMissionContext(),
       this.getPhaseObjective(task),
@@ -35,6 +36,7 @@ export class ContextPacketBuilder {
       this.getScarsDigest(),
       this.getStateDigest(),
       this.getBoundaries(),
+      this.getSettings(),
     ]);
 
     return {
@@ -55,6 +57,7 @@ export class ContextPacketBuilder {
       scarsDigest,
       stateDigest,
       boundaries,
+      settings,
     };
   }
 
@@ -338,7 +341,7 @@ export class ContextPacketBuilder {
     }
   }
 
-  // ── Slot 10: Boundaries ──────────────────────────────────────────────────
+  // ── Slot 13: Boundaries ──────────────────────────────────────────────────
 
   private async getBoundaries(): Promise<string[]> {
     const settingsPath = path.join(this.cwd, NEXUS_FILES.SETTINGS);
@@ -350,6 +353,44 @@ export class ContextPacketBuilder {
       return settings.boundaries ?? [];
     } catch {
       return [];
+    }
+  }
+
+  // ── Slot 14: Settings (tool commands + behavior flags) ───────────────────
+
+  private async getSettings(): Promise<ContextPacket['settings']> {
+    const defaults: ContextPacket['settings'] = {
+      commands: {
+        test: 'npm test',
+        lint: 'npm run lint',
+        typecheck: 'npx tsc --noEmit',
+      },
+      auto_advance: false,
+      parallelization: false,
+    };
+
+    const settingsPath = path.join(this.cwd, NEXUS_FILES.SETTINGS);
+    if (!existsSync(settingsPath)) return defaults;
+
+    try {
+      const raw = await readFile(settingsPath, 'utf-8');
+      const s = JSON.parse(raw) as {
+        commands?: Partial<ContextPacket['settings']['commands']>;
+        auto_advance?: boolean;
+        parallelization?: boolean;
+      };
+      return {
+        commands: {
+          test: s.commands?.test ?? defaults.commands.test,
+          lint: s.commands?.lint ?? defaults.commands.lint,
+          typecheck: s.commands?.typecheck ?? defaults.commands.typecheck,
+          build: s.commands?.build,
+        },
+        auto_advance: s.auto_advance ?? defaults.auto_advance,
+        parallelization: s.parallelization ?? defaults.parallelization,
+      };
+    } catch {
+      return defaults;
     }
   }
 }

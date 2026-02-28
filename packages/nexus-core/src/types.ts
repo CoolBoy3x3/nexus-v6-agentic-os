@@ -109,11 +109,12 @@ export interface Decision {
  * Gold-standard narrow context packet passed to each worker agent.
  * Workers receive ONLY what their task needs — never the full codebase.
  *
- * The 13 slots answer every question a worker must answer before writing code:
+ * The 14 slots answer every question a worker must answer before writing code:
  *   WHY        — missionContext, phaseObjective
  *   WHAT       — files, filesContent, acceptanceCriteria
  *   HOW        — architectureSlice, contractsSlice, dependencySymbols, testsSlice, waveContext
  *   CONSTRAINTS — scarsDigest, stateDigest, boundaries
+ *   TOOLING    — settings
  *   DISCIPLINE — tddMode, riskTier (top-level)
  */
 export interface ContextPacket {
@@ -188,6 +189,22 @@ export interface ContextPacket {
   // Slot 13: Files the worker must never touch
   // Source: Boundaries section from PLAN.md verbatim
   boundaries: string[];
+
+  // ── TOOLING ───────────────────────────────────────────────────────────────
+
+  // Slot 14: Project tool commands — how to run tests, lint, typecheck in this project
+  // Source: settings.json commands section
+  // Answers: "What exact commands do I run to verify my work?"
+  settings: {
+    commands: {
+      test: string;        // e.g. "npm test" or "pnpm vitest"
+      lint: string;        // e.g. "npm run lint"
+      typecheck: string;   // e.g. "npx tsc --noEmit"
+      build?: string;      // e.g. "npm run build"
+    };
+    auto_advance: boolean; // governs checkpoint auto-approve behavior
+    parallelization: boolean;
+  };
 }
 
 // ─── Merge Decision ────────────────────────────────────────────────────────

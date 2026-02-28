@@ -1,8 +1,8 @@
 # Execute Phase Workflow
 
-Implements wave-based task execution for `/nexus:execute`. Lean orchestrator: holds structure, not file contents. Dispatches workers with task definition + paths only.
+Implements wave-based task execution for `/nexus:execute`. Lean orchestrator: holds structure, not file contents. Dispatches workers with a pre-built context packet — all 14 slots inline.
 
-**Key principle: Orchestrator target <15% context. Workers each get a fresh 200k context. Pass paths — workers read their own context.**
+**Key principle: Orchestrator target <15% context. Workers each get a fresh 200k context. Build the context packet once in orchestrator — pass all 14 slots inline to each worker.**
 
 **Automation first:** Claude runs all CLI/server/build commands. Users NEVER run commands — they only visit URLs, evaluate visuals, provide secrets. Claude sets up the verification environment before any checkpoint.
 
@@ -16,7 +16,7 @@ Implements wave-based task execution for `/nexus:execute`. Lean orchestrator: ho
 4. Verify loop position is PLAN ✓
 5. If EXECUTE already in-progress: find last completed task, resume from there
 
-**Orchestrator must NOT read file contents. Hold task definitions and paths only.**
+**Orchestrator must NOT read file contents directly. Delegate all context loading to ContextPacketBuilder — it reads and filters everything. Orchestrator holds task definitions and the pre-built packets only.**
 
 ---
 
@@ -91,11 +91,13 @@ git add -A && git stash --include-untracked -m "nexus-checkpoint-{task-id}-{time
 ```
 Write checkpoint record to `.nexus/06-checkpoints/`. Announce: "Checkpoint created before {task-id}."
 
-### Dispatch Workers (Paths Only)
+### Build Context Packet and Dispatch Workers
+
+Before dispatching any worker in the wave, call `ContextPacketBuilder.buildForTask(task, allTasks)` for each task. This builds all 14 slots in parallel and returns a `ContextPacket` object. Then pass it inline to the worker — workers receive pre-loaded content, not paths to read.
 
 For each task, spawn a worker. Parallel if `settings.parallelization: true`, sequential otherwise.
 
-**Pass task definition and file paths. Worker reads its own context. Do NOT read file contents in orchestrator.**
+**Pass the full pre-built ContextPacket inline. Workers do NOT read their own context — everything is pre-loaded.**
 
 ```
 Task(
@@ -105,21 +107,67 @@ Task(
 
     Execute: T{id}: {full description}
 
-    Your context packet — read each of these yourself at start:
-    task: {inline JSON of task definition}
-    files_modified: {list of file paths — read each one}
-    architectureSlice: read .nexus/02-architecture/modules.json — filter to entries whose "files" overlap with your files_modified
-    contractsSlice: read .nexus/02-architecture/api_contracts.json — filter to entries whose "file" matches your files_modified
-    testsSlice: read .nexus/03-index/test_map.json — filter to entries whose "source" matches your files_modified
-    stateDigest: read ONLY the first 150 lines of .nexus/01-governance/STATE.md
-    scars: read ONLY the "Active Prevention Rules" table from .nexus/01-governance/SCARS.md
-    settings: read .nexus/01-governance/settings.json (for commands.test, commands.lint, commands.typecheck, auto_advance)
-    boundaries: {DO NOT CHANGE list from PLAN.md boundaries section — inline, do not re-read PLAN.md}
-    tddMode: {task.tdd_mode}
+    ## Your Pre-Built Context Packet (14 slots — all pre-loaded, do not re-read these files)
 
-    ONLY read files in files_modified + the paths above.
-    ONLY write to files in files_modified.
-    Use NEXUS_PERMISSION_REQUEST for anything else.
+    ### Identity
+    taskId: {packet.taskId}
+    tddMode: {packet.tddMode}        ← hard | standard | skip — governs your testing discipline
+    riskTier: {packet.riskTier}      ← low | medium | high | critical
+
+    ### WHY (why does this task exist?)
+    missionContext:
+    {packet.missionContext}
+
+    phaseObjective:
+    {packet.phaseObjective}
+
+    ### WHAT (what exactly must be built)
+    files: {packet.files}
+
+    filesContent:
+    {For each file in packet.filesContent: "--- {filename} ---\n{content}\n---"}
+    (empty string = file does not exist yet — create it)
+
+    acceptanceCriteria:
+    {packet.acceptanceCriteria}
+
+    ### HOW (how the system is structured and what you can call)
+    architectureSlice:
+    {JSON.stringify(packet.architectureSlice)}
+
+    contractsSlice:
+    {JSON.stringify(packet.contractsSlice)}
+
+    dependencySymbols (exported names from files you import but don't own):
+    {JSON.stringify(packet.dependencySymbols)}
+
+    testsSlice (test files covering your source files):
+    {packet.testsSlice.join(', ') || '(none mapped yet)'}
+
+    waveContext (what prior waves already built — build on top of this):
+    {packet.waveContext}
+
+    ### CONSTRAINTS (non-negotiable rules)
+    scarsDigest (active prevention rules — do NOT repeat these failures):
+    {packet.scarsDigest}
+
+    stateDigest (loop position, recent decisions, blockers):
+    {packet.stateDigest}
+
+    boundaries (files you must NEVER touch):
+    {packet.boundaries.join('\n') || '(none specified)'}
+
+    ### TOOLING (exact commands to use)
+    test command:      {packet.settings.commands.test}
+    lint command:      {packet.settings.commands.lint}
+    typecheck command: {packet.settings.commands.typecheck}
+    {packet.settings.commands.build ? 'build command:     ' + packet.settings.commands.build : ''}
+    auto_advance:      {packet.settings.auto_advance}
+
+    ---
+
+    ONLY write to files in the `files` list above.
+    Use NEXUS_PERMISSION_REQUEST for any file not in your packet.
   "
 )
 ```
@@ -149,7 +197,7 @@ T{id} spot-check failed: {N of M files found / zero diff}
 Wave paused — possible false completion signal.
 ```
 
-If spot-check passes: dispatch validator (paths only):
+If spot-check passes: dispatch validator (use commands from context packet):
 ```
 Task(
   subagent_type="nexus-validator",
@@ -158,11 +206,13 @@ Task(
 
     Validate T{id}: {description}
 
-    Read and check:
-    - {each file in task.files_modified}
-    - Run: npm run lint -- {files}
-    - Run: npx tsc --noEmit
-    - Run: npm test {test files}
+    Files to check: {task.files_modified.join(', ')}
+    Test files: {packet.testsSlice.join(', ') || 'run full suite'}
+
+    Commands (from project settings — use these exactly):
+    - Lint:      {packet.settings.commands.lint}
+    - Typecheck: {packet.settings.commands.typecheck}
+    - Test:      {packet.settings.commands.test} {test_files}
 
     Return ## VALIDATION PASSED with summary,
     or ## VALIDATION FAILED with exact errors.

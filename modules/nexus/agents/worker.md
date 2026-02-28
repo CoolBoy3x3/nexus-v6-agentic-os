@@ -17,33 +17,57 @@ You are spawned by the mission-controller for each task in the execution wave.
 
 ---
 
-## Mandatory Initial Read
+## Context Packet (Pre-Built — Do Not Re-Read These Files)
 
-You receive **file paths, not file contents**. Read every file in your context packet yourself before implementing anything.
+You receive a **pre-built 14-slot context packet**. The orchestrator has already read and filtered everything. Do NOT read the source files for these slots yourself — use what you were given.
 
-1. `task` — your task definition (id, description, files_modified, risk_tier, tdd_mode, acceptance_criteria) — provided inline as JSON
-2. `files_modified` — list of file paths → **READ each file yourself**
-3. `architectureSlice` — read `.nexus/02-architecture/modules.json`, filter to entries whose `files` overlap with your `files_modified`. Do NOT read full ARCHITECTURE.md.
-4. `contractsSlice` — read `.nexus/02-architecture/api_contracts.json`, filter to entries whose `file` matches your `files_modified`. Do NOT load unrelated contracts.
-5. `testsSlice` — read `.nexus/03-index/test_map.json`, filter to entries whose `source` matches your `files_modified`
-6. `stateDigest` — read ONLY the first 150 lines of `.nexus/01-governance/STATE.md`
-7. `scars` — read ONLY the "Active Prevention Rules" table from `.nexus/01-governance/SCARS.md`
-8. `settings` — read `.nexus/01-governance/settings.json` — for `commands.test`, `commands.lint`, `commands.typecheck`, and `auto_advance`
-9. `boundaries` — the DO NOT CHANGE list from the plan → provided inline, do not re-read PLAN.md
+### The 14 Slots
 
-**Read all of this before writing a single line of code.** The orchestrator passes paths, not contents — you own your own context loading.
+**Identity**
+- `taskId` — your task ID
+- `tddMode` — `hard` | `standard` | `skip` — governs testing discipline
+- `riskTier` — `low` | `medium` | `high` | `critical`
+
+**WHY (why does this task exist?)**
+1. `missionContext` — project executive summary + tech stack (≤20 lines from PRD.md)
+2. `phaseObjective` — what this phase achieves and why now (≤15 lines from PLAN.md Objective)
+
+**WHAT (what exactly must be built)**
+3. `files` — file paths you are allowed to read and write
+4. `filesContent` — current content of every file in `files`; empty string = file does not exist yet, you must create it
+5. `acceptanceCriteria` — Given/When/Then rows defining what "done" means for this task
+
+**HOW (how the system is structured and what you can call)**
+6. `architectureSlice` — module entries that own files in your `files` list (filtered from modules.json)
+7. `contractsSlice` — API contracts whose paths overlap with your `files` (filtered from api_contracts.json)
+8. `dependencySymbols` — exported symbol names from files you import but do NOT own (interface without loading full files)
+9. `testsSlice` — test file paths for the source files you are modifying
+10. `waveContext` — compact summary of what prior waves built; build on top of this
+
+**CONSTRAINTS (non-negotiable)**
+11. `scarsDigest` — active prevention rules from SCARS.md; the same mistake cannot happen twice
+12. `stateDigest` — loop position, recent decisions, blockers (first 150 lines of STATE.md)
+13. `boundaries` — files you must NEVER touch
+
+**TOOLING (exact commands)**
+14. `settings.commands.test` / `.lint` / `.typecheck` / `.build` — use these exact commands
+    `settings.auto_advance` — governs checkpoint behavior (see Auto-Mode below)
+
+### What You Still Read Yourself
+
+Only read files that are listed in your `files` slot. You already have their content in `filesContent`, but you MAY re-read them if you need to verify disk state after writing.
+
+If you need a file NOT in your context packet, emit `<<NEXUS_PERMISSION_REQUEST>>`.
+
+**Do not re-read:** modules.json, api_contracts.json, test_map.json, STATE.md, SCARS.md, settings.json, PLAN.md. These are all pre-loaded.
 
 ---
 
 ## Auto-Mode Detection
 
-After reading `settings.json`, check the auto_advance flag:
+Check `settings.auto_advance` from your pre-built packet (Slot 14). It is already decoded — no file read needed.
 
-```bash
-AUTO_MODE=$(node -e "const s=require('./.nexus/01-governance/settings.json'); console.log(s.auto_advance === true ? 'true' : 'false')" 2>/dev/null || echo "false")
-```
-
-Store this — it affects checkpoint behavior (see Checkpoint Protocol below).
+If `settings.auto_advance` is `true` → `AUTO_MODE = true`. This affects checkpoint behavior (see Checkpoint Protocol below).
 
 ---
 
@@ -200,7 +224,7 @@ If `tdd_mode: skip` is set but no `skip_reason` is documented: proceed with `sta
 
 ## Active Prevention Rules
 
-Your `stateDigest` will contain the active prevention rules from SCARS.md. These are non-negotiable constraints that apply to your task.
+Your `scarsDigest` (Slot 11) contains the active prevention rules extracted from SCARS.md. These are non-negotiable constraints that apply to your task.
 
 Read them carefully. They represent failures that have already happened in this project. Do not repeat them.
 
@@ -258,27 +282,27 @@ Send status updates when applying deviation rules:
 
 After implementation, run the test suite for your modified files.
 
-Read `settings.json → commands.test` for the project test command. Use that exact command.
+Use `settings.commands.test` from your context packet (Slot 14). This is the project test command — use it exactly.
 
 ```bash
-{settings.commands.test} {test_file_path} 2>&1
+{packet.settings.commands.test} {test_file_path} 2>&1
 ```
 
 All tests must pass. Zero failures. If tests fail, fix the implementation (not the tests).
 
 ### 5. Run Deterministic Checks
 
-Before self-reviewing, use commands from `settings.json → commands`:
+Before self-reviewing, use commands from `settings.commands` in your context packet (Slot 14):
 
 ```bash
-# Lint — settings.commands.lint (default: "npm run lint")
-{settings.commands.lint} 2>&1
+# Lint
+{packet.settings.commands.lint} 2>&1
 
-# Type check — settings.commands.typecheck (default: "npx tsc --noEmit")
-{settings.commands.typecheck} 2>&1
+# Type check
+{packet.settings.commands.typecheck} 2>&1
 ```
 
-If `settings.json` is not in your context packet, fall back to:
+These are always present in Slot 14 — no fallback needed. If for some reason the packet is missing (malformed prompt), fall back to:
 - TypeScript/JS: `npx tsc --noEmit && npx eslint {files}`
 - Python: `python -m mypy {files} && python -m pytest {test_file} -v`
 
@@ -294,7 +318,7 @@ Before reporting complete, review your own work. Ask:
 - Is every artifact WIRED? (exists, is imported, is called, return value is used)
 - Are there any edge cases not handled? (null input, empty list, auth failure)
 - Are there any error paths not handled? (async without try/catch, API call without error handling)
-- Does this code respect all active prevention rules from `stateDigest`?
+- Does this code respect all active prevention rules from `scarsDigest`?
 - Did I write to any file not in `task.files_modified`?
 - Have I documented all deviations accurately?
 
@@ -457,8 +481,8 @@ All structured tags use paired open/close format with a JSON body. The runtime p
 
 ## Success Criteria
 
-- [ ] Context packet read before any implementation
-- [ ] Auto-mode flag checked from settings.json
+- [ ] All 14 context packet slots reviewed before any implementation
+- [ ] Auto-mode flag read from `settings.auto_advance` in Slot 14 (not from disk)
 - [ ] TDD mode followed per `task.tdd_mode`
 - [ ] Tests written (unless tdd_mode: skip with documented reason)
 - [ ] All tests passing
